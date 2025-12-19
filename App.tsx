@@ -46,16 +46,31 @@ const App: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState<number | 'All'>('All');
 
   // 1. CHARGEMENT INITIAL DEPUIS LA BASE DE DONNÉES
-  const fetchTransactions = async () => {
-    const { data, error } = await supabase
-      .from('interactions')
-      .select('contenu')
-      .order('id', { ascending: false });
+ const fetchTransactions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('interactions')
+        .select('contenu')
+        .order('id', { ascending: false });
 
-    if (!error && data) {
-      // On transforme le texte JSON stocké en objets Transactions
-      const loaded = data.map(item => JSON.parse(item.contenu));
-      setTransactions(loaded);
+      if (error) {
+        console.error("Erreur Supabase:", error.message);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const loaded = data.map(item => {
+          try {
+            return JSON.parse(item.contenu);
+          } catch (e) {
+            return null;
+          }
+        }).filter(t => t !== null); // On enlève ce qui n'est pas du bon JSON
+        
+        setTransactions(loaded);
+      }
+    } catch (err) {
+      console.error("Crash chargement:", err);
     }
   };
 
