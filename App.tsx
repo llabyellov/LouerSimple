@@ -182,7 +182,7 @@ const App: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  console.log; 
+  console.log("L'application arrive jusqu'ici !");
   
   return (
     <div className="min-h-screen pb-20 bg-slate-50 ...">
