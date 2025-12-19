@@ -182,6 +182,10 @@ const App: React.FC = () => {
     setIsFormOpen(true);
   };
 
+  console.log; 
+  
+  return (
+    <div className="min-h-screen pb-20 bg-slate-50 ...">
   return (
     <div className="min-h-screen pb-20 bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-200 transition-colors">
       {confirmAction.show && (
