@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Transaction, ViewType, Category, TransactionType } from './types';
 import Dashboard from './components/Dashboard';
@@ -15,7 +14,10 @@ import {
   FileSpreadsheet, Moon, Sun
 } from 'lucide-react';
 
-const STORAGE_KEY = 'louersimple_ultimate_v4';
+// CONNEXION SUPABASE
+import { createClient } from '@supabase/supabase-js';
+const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+
 const THEME_KEY = 'louersimple_theme_preference';
 
 const App: React.FC = () => {
@@ -43,19 +45,33 @@ const App: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState<number | 'All'>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number | 'All'>('All');
 
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) setTransactions(parsed);
-      } catch (e) { console.error("Load error", e); }
+  // 1. CHARGEMENT INITIAL DEPUIS LA BASE DE DONNÉES
+  const fetchTransactions = async () => {
+    const { data, error } = await supabase
+      .from('interactions')
+      .select('contenu')
+      .order('id', { ascending: false });
+
+    if (!error && data) {
+      // On transforme le texte JSON stocké en objets Transactions
+      const loaded = data.map(item => JSON.parse(item.contenu));
+      setTransactions(loaded);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
-  }, [transactions]);
+    fetchTransactions();
+
+    // 2. ÉCOUTE DU TEMPS RÉEL (Si quelqu'un d'autre ajoute une ligne)
+    const channel = supabase
+      .channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interactions' }, () => {
+        fetchTransactions(); // On recharge tout quand un changement survient
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   useEffect(() => {
     if (isDark) {
@@ -68,43 +84,15 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setIsDark(!isDark);
 
-  const handleSaveTransaction = (transaction: Transaction, repetition: number = 1) => {
-    const updated = [...transactions];
-    
-    if (editingTransaction) {
-      const index = updated.findIndex(t => t.id === transaction.id);
-      if (index > -1) {
-        updated[index] = transaction;
-      }
-    } else {
-      for (let i = 0; i < repetition; i++) {
-        const baseDate = new Date(transaction.date);
-        baseDate.setMonth(baseDate.getMonth() + i);
-        
-        const newT: Transaction = {
-          ...transaction,
-          id: i === 0 ? transaction.id : Math.random().toString(36).substring(2, 9),
-          date: baseDate.toISOString().split('T')[0],
-        };
+  // 3. SAUVEGARDE VERS LA BASE DE DONNÉES
+  const handleSaveTransaction = async (transaction: Transaction, repetition: number = 1) => {
+    // Note: Pour simplifier au maximum, on envoie la nouvelle transaction
+    // Dans ta table Supabase colonne 'contenu' au format JSON texte.
+    const { error } = await supabase
+      .from('interactions')
+      .insert([{ contenu: JSON.stringify(transaction) }]);
 
-        if (newT.booking) {
-          const start = new Date(transaction.booking!.startDate);
-          const end = new Date(transaction.booking!.endDate);
-          start.setMonth(start.getMonth() + i);
-          end.setMonth(end.getMonth() + i);
-          newT.booking = {
-            ...transaction.booking!,
-            startDate: start.toISOString().split('T')[0],
-            endDate: end.toISOString().split('T')[0],
-          };
-          newT.date = newT.booking.startDate;
-        }
-        
-        updated.unshift(newT);
-      }
-    }
-
-    setTransactions(updated);
+    if (error) alert("Erreur de sauvegarde : " + error.message);
     setIsFormOpen(false);
   };
 
@@ -112,7 +100,7 @@ const App: React.FC = () => {
     setConfirmAction({
       show: true,
       title: "Supprimer l'opération",
-      message: "Êtes-vous sûr de vouloir supprimer cette transaction ? Cette action est irréversible.",
+      message: "Note : La suppression est locale pour cet exemple. Pour la supprimer partout, il faut vider la table Supabase.",
       isDanger: true,
       onConfirm: () => {
         setTransactions(prev => prev.filter(t => t.id !== id));
@@ -125,11 +113,10 @@ const App: React.FC = () => {
     setConfirmAction({
       show: true,
       title: "Réinitialisation Totale",
-      message: "Attention : TOUTES vos données seront effacées définitivement. Voulez-vous continuer ?",
+      message: "Voulez-vous vider l'affichage ? (Les données restent sur Supabase)",
       isDanger: true,
       onConfirm: () => {
         setTransactions([]);
-        localStorage.removeItem(STORAGE_KEY);
         setConfirmAction(prev => ({ ...prev, show: false }));
       }
     });
@@ -142,10 +129,15 @@ const App: React.FC = () => {
     input.onchange = (e: any) => {
       const file = e.target.files[0];
       const reader = new FileReader();
-      reader.onload = (event: any) => {
+      reader.onload = async (event: any) => {
         try {
           const data = JSON.parse(event.target.result);
-          if (Array.isArray(data)) setTransactions(data);
+          if (Array.isArray(data)) {
+            // Optionnel : Envoyer tout le fichier vers Supabase
+            for(const t of data) {
+               await supabase.from('interactions').insert([{ contenu: JSON.stringify(t) }]);
+            }
+          }
         } catch (err) { alert('Format invalide'); }
       };
       reader.readAsText(file);
