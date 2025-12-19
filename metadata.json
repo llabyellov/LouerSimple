@@ -1,0 +1,5 @@
+{
+  "name": "Copy of LouerSimple",
+  "description": "Une application complète de gestion de locations saisonnières permettant de suivre les revenus, les dépenses fixes et variables, et d'analyser les flux financiers avec un tableau de bord visuel.",
+  "requestFramePermissions": []
+}
